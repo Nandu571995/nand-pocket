@@ -1,35 +1,51 @@
-# pocket_option_scraper.py
-
 import requests
-import datetime
-import time
+import pandas as pd
+from datetime import datetime, timedelta
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
+# 🟢 You can expand this list as needed
 def get_all_assets():
-    url = "https://pocketoption.com/en/cabinet/demo/"
-    response = requests.get(url, headers=HEADERS)
-    assets = [
-        "EURUSD_otc", "GBPUSD_otc", "USDJPY_otc", "AUDUSD_otc",
-        "NZDUSD_otc", "USDCHF_otc", "USDCAD_otc", "EURGBP_otc",
-        "EURJPY_otc", "GBPJPY_otc", "AUDJPY_otc", "AUDNZD_otc",
-        "BTCUSD_otc", "ETHUSD_otc", "LTCUSD_otc", "XRPUSD_otc",
-        "XAUUSD_otc", "XAGUSD_otc", "USOIL_otc"
+    return [
+        "EURUSD_OTC", "GBPUSD_OTC", "USDJPY_OTC", "AUDUSD_OTC", "NZDUSD_OTC",
+        "EURJPY_OTC", "GBPJPY_OTC", "EURGBP_OTC", "USDCHF_OTC", "EURUSD",
+        "GBPUSD", "USDJPY", "AUDUSD", "NZDUSD", "EURJPY", "GBPJPY",
+        "EURGBP", "USDCHF"
     ]
-    return assets
 
-def get_candles(asset, interval="60", limit=3):
-    now = int(time.time())
-    url = f"https://api.pocketoption.com/api/v1/candles/{asset}?period={interval}&limit={limit}&to={now}"
+# 🟢 Fetch candles for indicators (returns DataFrame)
+def get_candles(asset, timeframe, limit=50):
     try:
-        response = requests.get(url, headers=HEADERS)
-        if response.status_code == 200:
-            return response.json().get("data", [])
-        else:
-            print(f"Error fetching candles for {asset}: {response.status_code}")
-            return []
+        end_time = int(datetime.utcnow().timestamp())
+        url = f"https://api.pocketoption.com/chart/history"
+        params = {
+            "asset": asset,
+            "type": timeframe,
+            "count": limit,
+            "end": end_time
+        }
+
+        response = requests.get(url, headers=HEADERS, params=params)
+        response.raise_for_status()
+        data = response.json().get("candles", [])
+
+        if not data:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+        df.set_index('timestamp', inplace=True)
+        return df[["open", "high", "low", "close", "volume"]]
+
     except Exception as e:
-        print(f"Exception while getting candles for {asset}: {e}")
-        return []
+        print(f"❌ Error fetching candles for {asset} [{timeframe}]: {e}")
+        return pd.DataFrame()
+
+# 🟢 Used for validation of signal performance
+def get_latest_candle(asset, timeframe):
+    candles = get_candles(asset, timeframe, limit=2)
+    if not candles.empty:
+        return candles.iloc[-1].to_dict()
+    return None
