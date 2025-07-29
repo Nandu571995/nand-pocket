@@ -1,47 +1,73 @@
-from telegram.ext import CommandHandler
-from utils import load_signals
+import os
+import json
 from telegram import Update
-from telegram.ext import CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackContext
+from dotenv import load_dotenv
 
-def get_performance():
-    signals = load_signals()
-    stats = {tf: {"✅": 0, "❌": 0} for tf in ["1m", "3m", "5m", "10m"]}
+load_dotenv()
 
-    for s in signals:
-        tf = s.get("timeframe")
-        if tf in stats and "result" in s:
-            stats[tf][s["result"]] += 1
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+SIGNAL_LOG_PATH = "signals.json"
 
-    report = "📊 *Signal Performance*\n"
-    for tf, tf_stats in stats.items():
-        total = tf_stats["✅"] + tf_stats["❌"]
-        if total == 0:
-            continue
-        accuracy = (tf_stats["✅"] / total) * 100
-        report += f"\n🕒 {tf} — ✅ {tf_stats['✅']} / ❌ {tf_stats['❌']} — *{accuracy:.1f}%*\n"
-    return report or "No signal history yet."
+# Load signals from file
+def load_signals():
+    try:
+        with open(SIGNAL_LOG_PATH, "r") as f:
+            return json.load(f)
+    except:
+        return []
 
-def get_latest_signals():
-    signals = load_signals()[-5:]  # Last 5
-    if not signals:
-        return "No signals found."
-
-    text = "🕵️ *Latest 5 Signals:*\n"
-    for s in signals:
-        text += (
-            f"\n🕒 {s['timeframe']} | {s['asset']} | {s['direction']} | "
-            f"{s.get('confidence', '?')}% | {s['timestamp']}"
-        )
-    return text
-
+# Handler to display performance summary
 def handle_performance(update: Update, context: CallbackContext):
-    report = get_performance()
-    update.message.reply_text(report, parse_mode='Markdown')
+    signals = load_signals()
+    if not signals:
+        update.message.reply_text("No signals recorded yet.")
+        return
 
-def handle_latest(update: Update, context: CallbackContext):
-    report = get_latest_signals()
-    update.message.reply_text(report, parse_mode='Markdown')
+    summary = {}
 
-# Add these handlers to dispatcher
+    for s in signals:
+        tf = s.get("timeframe", "unknown")
+        if tf not in summary:
+            summary[tf] = {"correct": 0, "wrong": 0, "total": 0}
+        summary[tf]["total"] += 1
+        if s.get("success") is True:
+            summary[tf]["correct"] += 1
+        elif s.get("success") is False:
+            summary[tf]["wrong"] += 1
+
+    text = "📊 *Signal Performance Summary*\n\n"
+    for tf, stats in summary.items():
+        total = stats["total"]
+        correct = stats["correct"]
+        wrong = stats["wrong"]
+        accuracy = round((correct / total) * 100, 1) if total > 0 else 0
+        text += f"🕒 *{tf}*\n✅ {correct}  ❌ {wrong}  📈 {accuracy}% accuracy\n\n"
+
+    update.message.reply_text(text, parse_mode="Markdown")
+
+# Send a trading signal as Telegram message
+def send_telegram_message(signal):
+    text = (
+        f"📢 *Next Candle {signal['timeframe'].upper()} Signal*\n\n"
+        f"🪙 *Asset:* {signal['asset']}\n"
+        f"📈 *Direction:* {signal['direction']}\n"
+        f"🧠 *Confidence:* {signal.get('confidence', 'N/A')}%\n"
+        f"📝 *Reason:* {signal.get('reason', 'N/A')}\n"
+        f"⏰ *Time:* {signal.get('timestamp', '')}"
+    )
+    updater.bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
+
+# Initialize Telegram bot
+updater = Updater(TELEGRAM_TOKEN, use_context=True)
+dispatcher = updater.dispatcher
+
+# Add performance command
 dispatcher.add_handler(CommandHandler("performance", handle_performance))
-dispatcher.add_handler(CommandHandler("latest", handle_latest))
+
+# Only run polling if script is executed directly
+if __name__ == "__main__":
+    print("🤖 Telegram bot is polling...")
+    updater.start_polling()
+    updater.idle()
