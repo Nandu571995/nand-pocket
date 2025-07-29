@@ -1,57 +1,59 @@
-# =======================
-# 📦 File: strategy.py
-# =======================
 import pandas as pd
 import ta
 
-def generate_signal(df):
-    if df is None or df.empty or len(df) < 50:
-        return None, None, 0
+def analyze_signal(df, asset, timeframe):
+    """
+    Analyze a dataframe of candle data and return a signal dict if any valid signal is found.
+    """
+    if df.empty or len(df) < 50:
+        return None
 
-    try:
-        df = df.copy()
-        df['EMA20'] = ta.trend.ema_indicator(df['close'], window=20)
-        df['EMA50'] = ta.trend.ema_indicator(df['close'], window=50)
-        df['MACD'] = ta.trend.macd_diff(df['close'])
-        df['RSI'] = ta.momentum.RSIIndicator(df['close']).rsi()
+    # Technical indicators
+    df['ema_fast'] = ta.trend.ema_indicator(df['close'], window=9)
+    df['ema_slow'] = ta.trend.ema_indicator(df['close'], window=21)
+    df['macd'] = ta.trend.macd_diff(df['close'])
+    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+    bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
+    df['bb_upper'] = bb.bollinger_hband()
+    df['bb_lower'] = bb.bollinger_lband()
 
-        last_row = df.iloc[-1]
-        prev_row = df.iloc[-2]
+    last = df.iloc[-1]
 
-        signals = []
-        confidence = 0
+    direction = None
+    reason = []
 
-        if last_row['EMA20'] > last_row['EMA50'] and prev_row['EMA20'] <= prev_row['EMA50']:
-            signals.append("EMA Bullish Crossover")
-            confidence += 30
-        elif last_row['EMA20'] < last_row['EMA50'] and prev_row['EMA20'] >= prev_row['EMA50']:
-            signals.append("EMA Bearish Crossover")
-            confidence += 30
+    if last['ema_fast'] > last['ema_slow']:
+        direction = "GREEN"
+        reason.append("EMA Crossover")
+    elif last['ema_fast'] < last['ema_slow']:
+        direction = "RED"
+        reason.append("EMA Crossover")
 
-        if last_row['MACD'] > 0 and prev_row['MACD'] <= 0:
-            signals.append("MACD Bullish Crossover")
-            confidence += 25
-        elif last_row['MACD'] < 0 and prev_row['MACD'] >= 0:
-            signals.append("MACD Bearish Crossover")
-            confidence += 25
+    if last['macd'] > 0:
+        reason.append("MACD Bullish")
+    elif last['macd'] < 0:
+        reason.append("MACD Bearish")
 
-        if last_row['RSI'] < 30:
-            signals.append("RSI Oversold")
-            confidence += 20
-        elif last_row['RSI'] > 70:
-            signals.append("RSI Overbought")
-            confidence += 20
+    if last['rsi'] > 70:
+        reason.append("RSI Overbought")
+    elif last['rsi'] < 30:
+        reason.append("RSI Oversold")
 
-        if last_row['close'] > last_row['open']:
-            direction = "GREEN"
-        else:
-            direction = "RED"
+    if last['close'] > last['bb_upper']:
+        reason.append("Above Bollinger")
+    elif last['close'] < last['bb_lower']:
+        reason.append("Below Bollinger")
 
-        reason = ", ".join(signals) if signals else "No strong signal"
-        confidence = min(confidence, 100)
+    if not direction:
+        return None
 
-        return direction, reason, confidence
+    confidence = min(100, len(reason) * 20)
 
-    except Exception as e:
-        print(f"❌ Strategy error: {e}")
-        return None, None, 0
+    return {
+        "asset": asset,
+        "timeframe": timeframe,
+        "timestamp": pd.Timestamp.now().strftime("%H:%M"),
+        "direction": direction,
+        "reason": ", ".join(reason),
+        "confidence": confidence
+    }
