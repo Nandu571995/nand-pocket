@@ -1,29 +1,35 @@
+# pocket_option_scraper.py
+
 import requests
-import pandas as pd
+import datetime
+import time
 
-# ✅ Full list of assets to scan (OTC, FX, Crypto, Commodities)
-ASSETS = [
-    # 🔄 OTC Assets
-    "EUR/USD OTC", "GBP/USD OTC", "USD/JPY OTC", "USD/CHF OTC", "AUD/USD OTC",
-    "EUR/JPY OTC", "EUR/GBP OTC", "GBP/JPY OTC", "USD/CAD OTC", "NZD/USD OTC",
-
-    # 💱 Major Forex Pairs
-    "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD",
-    "EUR/JPY", "EUR/GBP", "GBP/JPY", "USD/CAD", "NZD/USD",
-
-    # 🪙 Cryptocurrencies
-    "BTC/USD", "ETH/USD", "LTC/USD", "XRP/USD",
-
-    # 🛢️ Commodities
-    "GOLD/USD", "SILVER/USD", "CRUDE OIL"
-]
-
-# ✅ Mapping of timeframe to seconds
-TIMEFRAME_MAP = {
-    "1m": 60,
-    "3m": 180,
-    "5m": 300,
-    "10m": 600
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
 }
 
-# ✅ Normalize asset names for URL comp
+def get_all_assets():
+    url = "https://pocketoption.com/en/cabinet/demo/"
+    response = requests.get(url, headers=HEADERS)
+    assets = [
+        "EURUSD_otc", "GBPUSD_otc", "USDJPY_otc", "AUDUSD_otc",
+        "NZDUSD_otc", "USDCHF_otc", "USDCAD_otc", "EURGBP_otc",
+        "EURJPY_otc", "GBPJPY_otc", "AUDJPY_otc", "AUDNZD_otc",
+        "BTCUSD_otc", "ETHUSD_otc", "LTCUSD_otc", "XRPUSD_otc",
+        "XAUUSD_otc", "XAGUSD_otc", "USOIL_otc"
+    ]
+    return assets
+
+def get_candles(asset, interval="60", limit=3):
+    now = int(time.time())
+    url = f"https://api.pocketoption.com/api/v1/candles/{asset}?period={interval}&limit={limit}&to={now}"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            return response.json().get("data", [])
+        else:
+            print(f"Error fetching candles for {asset}: {response.status_code}")
+            return []
+    except Exception as e:
+        print(f"Exception while getting candles for {asset}: {e}")
+        return []
