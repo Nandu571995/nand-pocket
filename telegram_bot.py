@@ -1,56 +1,47 @@
-import os
-import json
-import requests
-from dotenv import load_dotenv
+from telegram.ext import CommandHandler
+from utils import load_signals
+from telegram import Update
+from telegram.ext import CallbackContext
 
-load_dotenv()
+def get_performance():
+    signals = load_signals()
+    stats = {tf: {"✅": 0, "❌": 0} for tf in ["1m", "3m", "5m", "10m"]}
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+    for s in signals:
+        tf = s.get("timeframe")
+        if tf in stats and "result" in s:
+            stats[tf][s["result"]] += 1
 
-HEADERS = {
-    "Content-Type": "application/json"
-}
+    report = "📊 *Signal Performance*\n"
+    for tf, tf_stats in stats.items():
+        total = tf_stats["✅"] + tf_stats["❌"]
+        if total == 0:
+            continue
+        accuracy = (tf_stats["✅"] / total) * 100
+        report += f"\n🕒 {tf} — ✅ {tf_stats['✅']} / ❌ {tf_stats['❌']} — *{accuracy:.1f}%*\n"
+    return report or "No signal history yet."
 
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+def get_latest_signals():
+    signals = load_signals()[-5:]  # Last 5
+    if not signals:
+        return "No signals found."
 
-def send_telegram_message(signal):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ Telegram BOT_TOKEN or CHAT_ID is missing")
-        return
+    text = "🕵️ *Latest 5 Signals:*\n"
+    for s in signals:
+        text += (
+            f"\n🕒 {s['timeframe']} | {s['asset']} | {s['direction']} | "
+            f"{s.get('confidence', '?')}% | {s['timestamp']}"
+        )
+    return text
 
-    message = (
-        f"📡 *Signal Alert* ({signal.get('timeframe', 'N/A')});\n"
-        f"🔹 *Asset:* {signal.get('asset', 'N/A')};\n"
-        f"📈 *Direction:* {signal.get('direction', 'N/A')};\n"
-        f"🎯 *Time:* {signal.get('timestamp', 'N/A')};\n"
-        f"💬 *Reason:* {signal.get('reason', 'N/A')};\n"
-        f"📊 *Confidence:* {signal.get('confidence', 0)}%"
-    )
+def handle_performance(update: Update, context: CallbackContext):
+    report = get_performance()
+    update.message.reply_text(report, parse_mode='Markdown')
 
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
+def handle_latest(update: Update, context: CallbackContext):
+    report = get_latest_signals()
+    update.message.reply_text(report, parse_mode='Markdown')
 
-    try:
-        response = requests.post(TELEGRAM_API_URL, headers=HEADERS, data=json.dumps(payload))
-        if response.status_code == 200:
-            print(f"✅ Signal sent to Telegram: {signal.get('asset')} ({signal.get('timeframe')})")
-        else:
-            print(f"❌ Failed to send message to Telegram: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"❌ Telegram exception: {e}")
-
-def run_telegram_bot_background():
-    test_msg = {
-        "asset": "SYSTEM",
-        "direction": "READY",
-        "timeframe": "INIT",
-        "timestamp": "Launching",
-        "reason": "Bot initialized successfully.",
-        "confidence": 100
-    }
-    send_telegram_message(test_msg)
-    print("✅ Test message sent to Telegram.")
+# Add these handlers to dispatcher
+dispatcher.add_handler(CommandHandler("performance", handle_performance))
+dispatcher.add_handler(CommandHandler("latest", handle_latest))
