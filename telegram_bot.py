@@ -1,80 +1,67 @@
-import os
 import json
-import requests
-from dotenv import load_dotenv
+import threading
+import time
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
-from pytz import timezone
+import pytz
+import telegram
+from telegram.error import TelegramError
 from utils import load_signals, calculate_performance
+import os
+from dotenv import load_dotenv
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Telegram Bot Config
+TOKEN = os.getenv("TELEGRAM_TOKEN")  # your Telegram bot token from .env
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # your chat ID from .env
+bot = telegram.Bot(token=TOKEN)
 
-HEADERS = {
-    "Content-Type": "application/json"
-}
-
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
+# Lock to prevent simultaneous sends
+send_lock = threading.Lock()
 
 def send_telegram_message(message):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ Telegram BOT_TOKEN or CHAT_ID is missing")
-        return
+    with send_lock:
+        try:
+            bot.send_message(chat_id=CHAT_ID, text=message)
+        except TelegramError as e:
+            print(f"Telegram error: {e}")
 
-    if isinstance(message, dict):
-        text = (
-            f"📡 *Signal Alert* ({message['timeframe']});\n"
-            f"🔹 *Asset:* {message['asset']};\n"
-            f"📈 *Direction:* {message['direction']};\n"
-            f"🎯 *Time:* {message.get('timestamp', 'N/A')};\n"
-            f"💬 *Reason:* {message.get('reason', 'N/A')};\n"
-            f"📊 *Confidence:* {message.get('confidence', 0)}%"
-        )
-    else:
-        text = str(message)
+def format_signal(asset, timeframe, direction, time_range, confidence, reason):
+    return f"""
+📡 *Pocket Option Signal*
 
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown"
-    }
+🪙 *Asset:* {asset}
+⏱️ *Timeframe:* {timeframe}
+🎯 *Direction:* {direction}
+🕒 *Time Range:* {time_range}
+📊 *Confidence:* {confidence}%
+🧠 *Reason:* {reason}
+""".strip()
 
-    try:
-        response = requests.post(TELEGRAM_API_URL, headers=HEADERS, data=json.dumps(payload))
-        if response.status_code == 200:
-            print(f"✅ Sent to Telegram: {text.splitlines()[0]}")
-        else:
-            print(f"❌ Failed to send message to Telegram: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"❌ Telegram exception: {e}")
-
+def send_signal(asset, timeframe, direction, time_range, confidence, reason):
+    message = format_signal(asset, timeframe, direction, time_range, confidence, reason)
+    send_telegram_message(message)
 
 def send_daily_performance():
     signals = load_signals()
-    if not signals:
-        send_telegram_message("⚠️ No signals logged today.")
-        return
+    performance = calculate_performance(signals)
 
-    report = calculate_performance(signals)
-    text = (
-        "📊 *Daily Performance Summary*\n\n"
-        f"✅ Correct: {report['correct']}\n"
-        f"❌ Wrong: {report['wrong']}\n"
-        f"📈 Accuracy: {report['accuracy']}%\n"
-        f"📦 Total Signals: {report['total']}"
-    )
-    send_telegram_message(text)
+    message = f"""
+📊 Daily Performance Summary
 
+✅ Correct: {performance['correct']}
+❌ Wrong: {performance['wrong']}
+📈 Accuracy: {performance['accuracy']}%
+📦 Total Signals: {performance['total']}
+"""
+    send_telegram_message(message.strip())
 
 def run_telegram_bot_background():
-    print("📡 Initializing Telegram bot and scheduler...")
-    # Send welcome message
-    test_msg = {
-        "asset": "SYSTEM",
-        "direction": "READY",
-        "timeframe": "ALL",
-        "reason": "Bot initialized successfully.",
-        "confidence": 100,
-        "
+    scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Kolkata"))
+    scheduler.add_job(send_daily_performance, "cron", hour=23, minute=59)
+    scheduler.start()
+
+    print("Telegram bot is running in background...")
+    while True:
+        time.sleep(10)
