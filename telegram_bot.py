@@ -4,53 +4,19 @@ import logging
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from telegram import Update
 from dotenv import load_dotenv
+from utils import evaluate_signal_performance
 
-# Load .env variables
+# Load environment variables
 load_dotenv()
+
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# ✅ START COMMAND
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
-
-# 📊 PERFORMANCE COMMAND
-def performance(update: Update, context: CallbackContext):
-    try:
-        with open("signals.json", "r") as f:
-            signals = json.load(f)
-
-        total = len(signals)
-        win = sum(1 for s in signals if s["result"] == "WIN")
-        loss = sum(1 for s in signals if s["result"] == "LOSS")
-        pending = total - win - loss
-
-        timeframes = {}
-        for s in signals:
-            tf = s["timeframe"]
-            if tf not in timeframes:
-                timeframes[tf] = {"win": 0, "loss": 0}
-            if s["result"] == "WIN":
-                timeframes[tf]["win"] += 1
-            elif s["result"] == "LOSS":
-                timeframes[tf]["loss"] += 1
-
-        msg = f"📊 Performance Summary:\nTotal Signals: {total}\n✅ WIN: {win}\n❌ LOSS: {loss}\n⏳ Pending: {pending}\n\n"
-        for tf, tf_stats in timeframes.items():
-            total_tf = tf_stats["win"] + tf_stats["loss"]
-            acc = (tf_stats["win"] / total_tf * 100) if total_tf > 0 else 0
-            msg += f"🕐 {tf}: {acc:.2f}% accuracy ({tf_stats['win']}W/{tf_stats['loss']}L)\n"
-
-        update.message.reply_text(msg)
-    except Exception as e:
-        logging.error(f"Error in /performance: {e}")
-        update.message.reply_text("⚠️ Could not fetch performance stats.")
-
-# 📡 SEND SIGNAL PROGRAMMATICALLY
-def send_signal_to_telegram(signal: dict):
+def send_telegram_message(signal: dict):
+    """Send formatted trading signal to Telegram."""
     message = (
         f"📡 Signal Alert ({signal['timeframe']});\n"
         f"🔹 Asset: {signal['asset']}\n"
@@ -63,20 +29,44 @@ def send_signal_to_telegram(signal: dict):
         updater = Updater(TOKEN, use_context=True)
         updater.bot.send_message(chat_id=CHAT_ID, text=message)
     except Exception as e:
-        logging.error(f"Failed to send signal: {e}")
+        logging.error(f"❌ Failed to send signal: {e}")
 
-# 🚀 RUN THE BOT
-def run_telegram_bot():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("performance", performance))
+def performance_handler(update: Update, context: CallbackContext):
+    try:
+        with open("signals.json", "r") as f:
+            signals = json.load(f)
 
-    logging.info("🤖 Telegram bot is running...")
-    updater.start_polling()
-    updater.idle()
+        stats = evaluate_signal_performance(signals)
 
+        summary = (
+            f"📊 Performance Summary:\n"
+            f"Total Signals: {stats['total']}\n"
+            f"✅ WIN: {stats['win']}\n"
+            f"❌ LOSS: {stats['loss']}\n"
+            f"⏳ Pending: {stats['pending']}\n\n"
+        )
+        for tf, tf_stats in stats["timeframes"].items():
+            acc = tf_stats["accuracy"]
+            summary += f"🕐 {tf}: {acc:.2f}% accuracy ({tf_stats['win']}W/{tf_stats['loss']}L)\n"
 
-# 🧪 Optional: Run directly for testing
-if __name__ == "__main__":
-    run_telegram_bot()
+        update.message.reply_text(summary)
+
+    except Exception as e:
+        logging.error(f"⚠️ Error reading performance: {e}")
+        update.message.reply_text("⚠️ Could not fetch performance stats.")
+
+def start_command(update: Update, context: CallbackContext):
+    update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
+
+def run_telegram_bot_background():
+    try:
+        updater = Updater(TOKEN, use_context=True)
+        dp = updater.dispatcher
+
+        dp.add_handler(CommandHandler("start", start_command))
+        dp.add_handler(CommandHandler("performance", performance_handler))
+
+        updater.start_polling()
+        updater.idle()
+    except Exception as e:
+        logging.error(f"❌ Failed to run Telegram bot: {e}")
