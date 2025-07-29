@@ -58,7 +58,7 @@ def performance_handler(update: Update, context: CallbackContext):
 def start_command(update: Update, context: CallbackContext):
     update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
 
-def run_telegram_bot_background():
+def run_telegram_bot():
     try:
         updater = Updater(TOKEN, use_context=True)
         dp = updater.dispatcher
