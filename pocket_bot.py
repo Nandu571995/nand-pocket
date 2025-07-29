@@ -2,7 +2,7 @@ import time
 import datetime
 import json
 from strategy import analyze_signal
-from telegram_bot import send_signal_telegram
+from telegram_bot import send_telegram_message as send_signal_telegram
 from pocket_option_scraper import get_candles, get_all_assets
 from utils import log_signal, load_signals
 
