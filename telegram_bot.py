@@ -1,67 +1,71 @@
 import json
-import threading
-import time
-from datetime import datetime
-from apscheduler.schedulers.background import BackgroundScheduler
-import pytz
-import telegram
-from telegram.error import TelegramError
-from utils import load_signals, calculate_performance
+import logging
+from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Update
+from utils import evaluate_signal_performance
+
+# 🔐 Replace with your actual token and chat_id in .env or directly here
 import os
 from dotenv import load_dotenv
-
 load_dotenv()
 
-# Telegram Bot Config
-TOKEN = os.getenv("TELEGRAM_TOKEN")  # your Telegram bot token from .env
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # your chat ID from .env
-bot = telegram.Bot(token=TOKEN)
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Lock to prevent simultaneous sends
-send_lock = threading.Lock()
+# Setup logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-def send_telegram_message(message):
-    with send_lock:
-        try:
-            bot.send_message(chat_id=CHAT_ID, text=message)
-        except TelegramError as e:
-            print(f"Telegram error: {e}")
+def send_telegram_message(signal):
+    """Send a formatted trading signal to Telegram."""
+    message = (
+        f"📡 Signal Alert ({signal['timeframe']});\n"
+        f"🔹 Asset: {signal['asset']}\n"
+        f"📈 Direction: {signal['direction']}\n"
+        f"🕐 Time: {signal.get('time_range', 'Next Candle')}\n"
+        f"💬 Reason: {signal['reason']}\n"
+        f"📊 Confidence: {signal['confidence']}%\n"
+    )
+    try:
+        updater = Updater(TOKEN, use_context=True)
+        updater.bot.send_message(chat_id=CHAT_ID, text=message)
+    except Exception as e:
+        logging.error(f"Failed to send message: {e}")
 
-def format_signal(asset, timeframe, direction, time_range, confidence, reason):
-    return f"""
-📡 *Pocket Option Signal*
+def performance_handler(update: Update, context: CallbackContext):
+    """Handle the /performance command."""
+    try:
+        with open("signals.json", "r") as f:
+            signals = json.load(f)
 
-🪙 *Asset:* {asset}
-⏱️ *Timeframe:* {timeframe}
-🎯 *Direction:* {direction}
-🕒 *Time Range:* {time_range}
-📊 *Confidence:* {confidence}%
-🧠 *Reason:* {reason}
-""".strip()
+        stats = evaluate_signal_performance(signals)
 
-def send_signal(asset, timeframe, direction, time_range, confidence, reason):
-    message = format_signal(asset, timeframe, direction, time_range, confidence, reason)
-    send_telegram_message(message)
+        summary = (
+            f"📊 Performance Summary:\n"
+            f"Total Signals: {stats['total']}\n"
+            f"✅ WIN: {stats['win']}\n"
+            f"❌ LOSS: {stats['loss']}\n"
+            f"⏳ Pending: {stats['pending']}\n\n"
+        )
+        for tf, tf_stats in stats["timeframes"].items():
+            acc = tf_stats["accuracy"]
+            summary += f"🕐 {tf}: {acc:.2f}% accuracy ({tf_stats['win']}W/{tf_stats['loss']}L)\n"
 
-def send_daily_performance():
-    signals = load_signals()
-    performance = calculate_performance(signals)
+        update.message.reply_text(summary)
 
-    message = f"""
-📊 Daily Performance Summary
+    except Exception as e:
+        logging.error(f"Error computing performance: {e}")
+        update.message.reply_text("⚠️ Could not fetch performance stats.")
 
-✅ Correct: {performance['correct']}
-❌ Wrong: {performance['wrong']}
-📈 Accuracy: {performance['accuracy']}%
-📦 Total Signals: {performance['total']}
-"""
-    send_telegram_message(message.strip())
+def start_command(update: Update, context: CallbackContext):
+    update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
 
-def run_telegram_bot_background():
-    scheduler = BackgroundScheduler(timezone=pytz.timezone("Asia/Kolkata"))
-    scheduler.add_job(send_daily_performance, "cron", hour=23, minute=59)
-    scheduler.start()
+def run_telegram_listener():
+    """Start the Telegram command listener."""
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-    print("Telegram bot is running in background...")
-    while True:
-        time.sleep(10)
+    dp.add_handler(CommandHandler("start", start_command))
+    dp.add_handler(CommandHandler("performance", performance_handler))
+
+    updater.start_polling()
+    updater.idle()
