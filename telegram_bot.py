@@ -32,40 +32,4 @@ def send_telegram_message(signal):
         logging.error(f"Failed to send message: {e}")
 
 def performance_handler(update: Update, context: CallbackContext):
-    """Handle the /performance command."""
-    try:
-        with open("signals.json", "r") as f:
-            signals = json.load(f)
-
-        stats = evaluate_signal_performance(signals)
-
-        summary = (
-            f"📊 Performance Summary:\n"
-            f"Total Signals: {stats['total']}\n"
-            f"✅ WIN: {stats['win']}\n"
-            f"❌ LOSS: {stats['loss']}\n"
-            f"⏳ Pending: {stats['pending']}\n\n"
-        )
-        for tf, tf_stats in stats["timeframes"].items():
-            acc = tf_stats["accuracy"]
-            summary += f"🕐 {tf}: {acc:.2f}% accuracy ({tf_stats['win']}W/{tf_stats['loss']}L)\n"
-
-        update.message.reply_text(summary)
-
-    except Exception as e:
-        logging.error(f"Error computing performance: {e}")
-        update.message.reply_text("⚠️ Could not fetch performance stats.")
-
-def start_command(update: Update, context: CallbackContext):
-    update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
-
-def run_telegram_listener():
-    """Start the Telegram command listener."""
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start_command))
-    dp.add_handler(CommandHandler("performance", performance_handler))
-
-    updater.start_polling()
-    updater.idle()
+    """Handle the /performance command."
