@@ -5,3 +5,6 @@ pandas
 ta
 APScheduler
 python-dotenv
+selenium
+webdriver-manager
+beautifulsoup4
