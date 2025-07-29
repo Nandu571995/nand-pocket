@@ -21,17 +21,14 @@ def log_signal(signal):
 
 def validate_signal(signal, latest_close):
     direction = signal["direction"]
-    signal_time = signal["timestamp"]
-    expiry = signal["expiry"]
-    
+    open_price = signal["open"]
     result = "PENDING"
-    if direction == "BUY" and latest_close > signal["open"]:
+    if direction == "BUY" and latest_close > open_price:
         result = "WIN"
-    elif direction == "SELL" and latest_close < signal["open"]:
+    elif direction == "SELL" and latest_close < open_price:
         result = "WIN"
     else:
         result = "LOSS"
-
     signal["result"] = result
     return signal
 
@@ -39,7 +36,7 @@ def calculate_performance():
     signals = load_signals()
     summary = {}
     for signal in signals:
-        tf = signal["timeframe"]
+        tf = signal.get("timeframe", "unknown")
         result = signal.get("result", "PENDING")
         if tf not in summary:
             summary[tf] = {"WIN": 0, "LOSS": 0, "PENDING": 0}
