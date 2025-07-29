@@ -1,49 +1,23 @@
+from telegram import Bot
 import os
-import json
-import requests
-from dotenv import load_dotenv
 
-load_dotenv()
+# Your Telegram bot token and chat ID (set via environment or hardcode temporarily)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8062898551:AAFp6Mzz3TU2Ngeqf4gL4KL55S1guuRwcnA")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "1014815784")
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+bot = Bot(token=TELEGRAM_TOKEN)
 
-HEADERS = {
-    "Content-Type": "application/json"
-}
-
-TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-
-def send_telegram_message(message):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ Telegram BOT_TOKEN or CHAT_ID is missing")
-        return
-
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-
+def send_telegram_message(signal):
     try:
-        response = requests.post(TELEGRAM_API_URL, headers=HEADERS, data=json.dumps(payload))
-        if response.status_code == 200:
-            print(f"✅ Signal sent to Telegram: {message.splitlines()[0]}")
-        else:
-            print(f"❌ Failed to send message to Telegram: {response.status_code} - {response.text}")
+        message = f"""📡 *Pocket Option Signal*
+🕒 *Timeframe*: {signal['timeframe']}
+💱 *Asset*: {signal['asset']}
+🎯 *Direction*: {signal['direction']}
+⚡ *Confidence*: {signal['confidence']}%
+📖 *Reason*: {signal['reason']}
+⏰ *Generated At*: {signal.get('timestamp', 'N/A')}"""
+
+        bot.send_message(chat_id=CHAT_ID, text=message, parse_mode="Markdown")
+        print(f"✅ Signal sent to Telegram: {signal['asset']} {signal['timeframe']}")
     except Exception as e:
-        print(f"❌ Telegram exception: {e}")
-
-
-def run_telegram_bot_background():
-    test_msg = (
-        "📡 *Signal Alert* (ALL);\n"
-        "🔹 *Asset:* SYSTEM;\n"
-        "📈 *Direction:* READY;\n"
-        "🎯 *Time:* Initialization;\n"
-        "💬 *Reason:* Bot initialized successfully.;\n"
-        "📊 *Confidence:* 100%"
-    )
-    send_telegram_message(test_msg)
-    print("✅ Test message sent. If you see this in Telegram, your bot is working!")
+        print(f"❌ Failed to send Telegram message: {e}")
