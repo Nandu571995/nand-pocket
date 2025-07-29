@@ -1,25 +1,25 @@
 import requests
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-# 🟢 You can expand this list as needed
+# ✅ List of assets: all major currency pairs + OTC
 def get_all_assets():
     return [
         "EURUSD_OTC", "GBPUSD_OTC", "USDJPY_OTC", "AUDUSD_OTC", "NZDUSD_OTC",
-        "EURJPY_OTC", "GBPJPY_OTC", "EURGBP_OTC", "USDCHF_OTC", "EURUSD",
-        "GBPUSD", "USDJPY", "AUDUSD", "NZDUSD", "EURJPY", "GBPJPY",
-        "EURGBP", "USDCHF"
+        "EURJPY_OTC", "GBPJPY_OTC", "EURGBP_OTC", "USDCHF_OTC",
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "NZDUSD",
+        "EURJPY", "GBPJPY", "EURGBP", "USDCHF"
     ]
 
-# 🟢 Fetch candles for indicators (returns DataFrame)
+# ✅ Get multiple candles for a given asset & timeframe
 def get_candles(asset, timeframe, limit=50):
     try:
         end_time = int(datetime.utcnow().timestamp())
-        url = f"https://api.pocketoption.com/chart/history"
+        url = "https://api.pocketoption.com/chart/history"
         params = {
             "asset": asset,
             "type": timeframe,
@@ -43,9 +43,9 @@ def get_candles(asset, timeframe, limit=50):
         print(f"❌ Error fetching candles for {asset} [{timeframe}]: {e}")
         return pd.DataFrame()
 
-# 🟢 Used for validation of signal performance
+# ✅ Get only the most recent candle for performance validation
 def get_latest_candle(asset, timeframe):
-    candles = get_candles(asset, timeframe, limit=2)
-    if not candles.empty:
-        return candles.iloc[-1].to_dict()
+    df = get_candles(asset, timeframe, limit=2)
+    if not df.empty:
+        return df.iloc[-1].to_dict()
     return None
