@@ -70,3 +70,18 @@ def run_telegram_listener():
 
     updater.start_polling()
     updater.idle()
+    
+    def run_telegram_bot_background():
+    """Run the Telegram bot in background (for use with threading in main.py)."""
+    try:
+        updater = Updater(TOKEN, use_context=True)
+        dp = updater.dispatcher
+
+        dp.add_handler(CommandHandler("start", start_command))
+        dp.add_handler(CommandHandler("performance", performance_handler))
+
+        updater.start_polling()
+        updater.idle()
+    except Exception as e:
+        logging.error(f"Failed to run Telegram bot: {e}")
+
