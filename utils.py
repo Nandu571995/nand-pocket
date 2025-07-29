@@ -1,64 +1,47 @@
 import json
+import os
 from datetime import datetime
-from pocket_option_scraper import get_latest_candle
 
-def load_signals(filepath='signals.json'):
-    try:
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-        return data
-    except Exception as e:
-        print(f"Error loading signals: {e}")
+SIGNAL_FILE = "signals.json"
+
+def load_signals():
+    if not os.path.exists(SIGNAL_FILE):
         return []
+    with open(SIGNAL_FILE, "r") as f:
+        return json.load(f)
 
-def save_signals(data, filepath='signals.json'):
-    try:
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        print(f"Error saving signals: {e}")
+def save_signals(signals):
+    with open(SIGNAL_FILE, "w") as f:
+        json.dump(signals, f, indent=2)
 
-def validate_signals():
+def log_signal(signal):
     signals = load_signals()
-    now = datetime.utcnow()
-
-    for signal in signals:
-        if 'result' not in signal and 'asset' in signal and 'timeframe' in signal:
-            end_time_str = signal['end_time']
-            end_time = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
-
-            if now >= end_time:
-                # Get latest candle for asset & timeframe
-                candle = get_latest_candle(signal['asset'], signal['timeframe'])
-
-                if candle:
-                    direction = signal['direction'].lower()
-                    candle_result = 'green' if candle['close'] > candle['open'] else 'red'
-
-                    if (direction == 'green' and candle_result == 'green') or (direction == 'red' and candle_result == 'red'):
-                        signal['result'] = 'correct'
-                    else:
-                        signal['result'] = 'wrong'
-
+    signals.append(signal)
     save_signals(signals)
 
-def calculate_performance(signals):
-    correct = 0
-    wrong = 0
+def validate_signal(signal, latest_close):
+    direction = signal["direction"]
+    signal_time = signal["timestamp"]
+    expiry = signal["expiry"]
+    
+    result = "PENDING"
+    if direction == "BUY" and latest_close > signal["open"]:
+        result = "WIN"
+    elif direction == "SELL" and latest_close < signal["open"]:
+        result = "WIN"
+    else:
+        result = "LOSS"
 
+    signal["result"] = result
+    return signal
+
+def calculate_performance():
+    signals = load_signals()
+    summary = {}
     for signal in signals:
-        if 'result' in signal:
-            if signal['result'] == 'correct':
-                correct += 1
-            elif signal['result'] == 'wrong':
-                wrong += 1
-
-    total = correct + wrong
-    accuracy = round((correct / total) * 100, 2) if total > 0 else 0.0
-
-    return {
-        'correct': correct,
-        'wrong': wrong,
-        'accuracy': accuracy,
-        'total': total
-    }
+        tf = signal["timeframe"]
+        result = signal.get("result", "PENDING")
+        if tf not in summary:
+            summary[tf] = {"WIN": 0, "LOSS": 0, "PENDING": 0}
+        summary[tf][result] += 1
+    return summary
