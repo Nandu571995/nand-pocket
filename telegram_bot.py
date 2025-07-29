@@ -1,10 +1,10 @@
 import json
 import logging
+import os
+from dotenv import load_dotenv
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from telegram import Update
 from utils import evaluate_signal_performance
-import os
-from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -61,7 +61,7 @@ def start_command(update: Update, context: CallbackContext):
     update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
 
 def run_telegram_listener():
-    """Start Telegram command listener."""
+    """Start Telegram command listener (not used with threading)."""
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
@@ -70,8 +70,8 @@ def run_telegram_listener():
 
     updater.start_polling()
     updater.idle()
-    
-    def run_telegram_bot_background():
+
+def run_telegram_bot_background():
     """Run the Telegram bot in background (for use with threading in main.py)."""
     try:
         updater = Updater(TOKEN, use_context=True)
@@ -84,4 +84,3 @@ def run_telegram_listener():
         updater.idle()
     except Exception as e:
         logging.error(f"Failed to run Telegram bot: {e}")
-
