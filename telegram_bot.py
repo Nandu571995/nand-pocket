@@ -1,5 +1,7 @@
-from telegram import Bot
 import os
+import json
+import requests
+from dotenv import load_dotenv
 
 # Your Telegram bot token and chat ID (set via environment or hardcode temporarily)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8062898551:AAFp6Mzz3TU2Ngeqf4gL4KL55S1guuRwcnA")
