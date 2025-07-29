@@ -70,3 +70,9 @@ def run_telegram_bot():
         updater.idle()
     except Exception as e:
         logging.error(f"❌ Failed to run Telegram bot: {e}")
+
+try:
+    updater.start_polling()
+except telegram.error.Conflict:
+    print("❌ Bot already running somewhere else. Only one instance is allowed.")
+
