@@ -1,72 +1,55 @@
+# telegram_bot.py
+
 import os
 import json
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram import Bot
+from telegram.ext import Updater
+from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
+
 load_dotenv()
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") or"8062898551:AAFp6Mzz3TU2Ngeqf4gL4KL55S1guuRwcnA"
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or"1014815784"
-SIGNAL_LOG_PATH = "signals.json"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Load signals from file
-def load_signals():
+bot = Bot(token=TELEGRAM_TOKEN)
+
+def send_telegram_message(message: str):
+    if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        try:
+            bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
+        except Exception as e:
+            print(f"Failed to send message: {e}")
+    else:
+        print("Telegram token or chat ID not set.")
+
+def calculate_accuracy():
     try:
-        with open(SIGNAL_LOG_PATH, "r") as f:
-            return json.load(f)
-    except:
-        return []
+        with open("signals.json", "r") as f:
+            signals = json.load(f)
+        summary = {}
+        for tf, items in signals.items():
+            total = len(items)
+            if total == 0:
+                continue
+            correct = sum(1 for x in items if x.get("result") == "✅")
+            acc = round((correct / total) * 100, 2)
+            summary[tf] = acc
+        return summary
+    except Exception as e:
+        print(f"Error calculating accuracy: {e}")
+        return {}
 
-# Handler to display performance summary
-def handle_performance(update: Update, context: CallbackContext):
-    signals = load_signals()
-    if not signals:
-        update.message.reply_text("No signals recorded yet.")
+def send_daily_performance():
+    accuracy = calculate_accuracy()
+    if not accuracy:
         return
+    msg = "📊 *Daily Signal Accuracy Summary*:\n"
+    for tf, acc in accuracy.items():
+        msg += f"🕒 {tf} — {acc}%\n"
+    send_telegram_message(msg)
 
-    summary = {}
-
-    for s in signals:
-        tf = s.get("timeframe", "unknown")
-        if tf not in summary:
-            summary[tf] = {"correct": 0, "wrong": 0, "total": 0}
-        summary[tf]["total"] += 1
-        if s.get("success") is True:
-            summary[tf]["correct"] += 1
-        elif s.get("success") is False:
-            summary[tf]["wrong"] += 1
-
-    text = "📊 *Signal Performance Summary*\n\n"
-    for tf, stats in summary.items():
-        total = stats["total"]
-        correct = stats["correct"]
-        wrong = stats["wrong"]
-        accuracy = round((correct / total) * 100, 1) if total > 0 else 0
-        text += f"🕒 *{tf}*\n✅ {correct}  ❌ {wrong}  📈 {accuracy}% accuracy\n\n"
-
-    update.message.reply_text(text, parse_mode="Markdown")
-
-# Send a trading signal as Telegram message
-def send_telegram_message(signal):
-    text = (
-        f"📢 *Next Candle {signal['timeframe'].upper()} Signal*\n\n"
-        f"🪙 *Asset:* {signal['asset']}\n"
-        f"📈 *Direction:* {signal['direction']}\n"
-        f"🧠 *Confidence:* {signal.get('confidence', 'N/A')}%\n"
-        f"📝 *Reason:* {signal.get('reason', 'N/A')}\n"
-        f"⏰ *Time:* {signal.get('timestamp', '')}"
-    )
-    updater.bot.send_message(chat_id=CHAT_ID, text=text, parse_mode="Markdown")
-
-# Initialize Telegram bot
-updater = Updater(TELEGRAM_TOKEN, use_context=True)
-dispatcher = updater.dispatcher
-
-# Add performance command
-dispatcher.add_handler(CommandHandler("performance", handle_performance))
-
-# Only run polling if script is executed directly
-if __name__ == "__main__":
-    print("🤖 Telegram bot is polling...")
-    updater.start_polling()
-    updater.idle()
+def run_telegram_bot_background():
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(send_daily_performance, "cron", hour=23, minute=59)
+    scheduler.start()
