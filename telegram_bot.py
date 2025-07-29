@@ -1,78 +1,93 @@
-import os
-import json
 import logging
+import telegram
 from telegram.ext import Updater, CommandHandler, CallbackContext
 from telegram import Update
-from dotenv import load_dotenv
-from utils import evaluate_signal_performance
+import json
+import os
 
-# Load environment variables
-load_dotenv()
-
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Configuration
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "your_bot_token_here")  # Replace with your actual bot token
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "your_chat_id_here")        # Replace with your actual chat ID
+SIGNALS_FILE = "signals.json"
 
 # Logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-def send_telegram_message(signal: dict):
-    """Send formatted trading signal to Telegram."""
-    message = (
-        f"📡 Signal Alert ({signal['timeframe']});\n"
-        f"🔹 Asset: {signal['asset']}\n"
-        f"📈 Direction: {signal['direction']}\n"
-        f"🕐 Time: {signal.get('time_range', 'Next Candle')}\n"
-        f"💬 Reason: {signal['reason']}\n"
-        f"📊 Confidence: {signal['confidence']}%\n"
+def load_signals():
+    try:
+        with open(SIGNALS_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+def send_telegram_message(message: str):
+    try:
+        bot = telegram.Bot(token=BOT_TOKEN)
+        bot.send_message(chat_id=CHAT_ID, text=message)
+    except Exception as e:
+        logging.error(f"Telegram send error: {e}")
+
+def format_signal(signal: dict) -> str:
+    return (
+        f"📊 Signal Alert\n"
+        f"Pair: {signal['pair']}\n"
+        f"Timeframe: {signal['timeframe']}\n"
+        f"Direction: {signal['direction'].upper()}\n"
+        f"Confidence: {signal['confidence']}%\n"
+        f"Time: {signal['time']}\n"
+        f"Reason: {signal['reason']}"
     )
-    try:
-        updater = Updater(TOKEN, use_context=True)
-        updater.bot.send_message(chat_id=CHAT_ID, text=message)
-    except Exception as e:
-        logging.error(f"❌ Failed to send signal: {e}")
 
-def performance_handler(update: Update, context: CallbackContext):
-    try:
-        with open("signals.json", "r") as f:
-            signals = json.load(f)
+# Telegram bot command handlers
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("👋 Bot is running and ready to send trading signals!")
 
-        stats = evaluate_signal_performance(signals)
+def last_signal(update: Update, context: CallbackContext):
+    signals = load_signals()
+    if signals:
+        latest = signals[-1]
+        update.message.reply_text("🕒 Last Signal:\n" + format_signal(latest))
+    else:
+        update.message.reply_text("No signals available yet.")
 
-        summary = (
-            f"📊 Performance Summary:\n"
-            f"Total Signals: {stats['total']}\n"
-            f"✅ WIN: {stats['win']}\n"
-            f"❌ LOSS: {stats['loss']}\n"
-            f"⏳ Pending: {stats['pending']}\n\n"
+def all_signals(update: Update, context: CallbackContext):
+    signals = load_signals()
+    if not signals:
+        update.message.reply_text("No signals found.")
+        return
+
+    for signal in signals[-5:]:
+        update.message.reply_text(format_signal(signal))
+
+def accuracy(update: Update, context: CallbackContext):
+    from performance import get_latest_performance
+    perf = get_latest_performance()
+    text = "📈 Performance Stats:\n"
+    for tf, stats in perf.items():
+        text += (
+            f"\n🕒 {tf.upper()}:\n"
+            f"✅ {stats['correct_signals']} / {stats['total_signals']} correct\n"
+            f"🎯 Accuracy: {stats['accuracy_percent']}%\n"
         )
-        for tf, tf_stats in stats["timeframes"].items():
-            acc = tf_stats["accuracy"]
-            summary += f"🕐 {tf}: {acc:.2f}% accuracy ({tf_stats['win']}W/{tf_stats['loss']}L)\n"
+    update.message.reply_text(text)
 
-        update.message.reply_text(summary)
-
-    except Exception as e:
-        logging.error(f"⚠️ Error reading performance: {e}")
-        update.message.reply_text("⚠️ Could not fetch performance stats.")
-
-def start_command(update: Update, context: CallbackContext):
-    update.message.reply_text("✅ Bot is running. Use /performance to check stats.")
-
-def run_telegram_bot():
+def run_bot():
     try:
-        updater = Updater(TOKEN, use_context=True)
+        updater = Updater(token=BOT_TOKEN, use_context=True)
         dp = updater.dispatcher
 
-        dp.add_handler(CommandHandler("start", start_command))
-        dp.add_handler(CommandHandler("performance", performance_handler))
+        dp.add_handler(CommandHandler("start", start))
+        dp.add_handler(CommandHandler("last", last_signal))
+        dp.add_handler(CommandHandler("signals", all_signals))
+        dp.add_handler(CommandHandler("accuracy", accuracy))
 
         updater.start_polling()
         updater.idle()
+
+    except telegram.error.Conflict as e:
+        logging.error("⚠️ Telegram conflict: Make sure only one bot instance is running.")
     except Exception as e:
-        logging.error(f"❌ Failed to run Telegram bot: {e}")
-
-try:
-    updater.start_polling()
-except telegram.error.Conflict:
-    print("❌ Bot already running somewhere else. Only one instance is allowed.")
-
+        logging.error(f"Telegram bot failed: {e}")
