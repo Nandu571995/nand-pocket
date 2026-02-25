@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Indian F&O Signal Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }
+    .container { max-width:1100px; margin:20px auto; padding:18px; }
+    h1 { margin:0 0 6px; }
+    .muted { color:#94a3b8; font-size:14px; margin-bottom:14px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+    .card { background:#111827; border:1px solid #1f2937; border-radius:10px; padding:12px; }
+    label { display:block; font-size:12px; color:#cbd5e1; margin:8px 0 4px; }
+    input, select { width:100%; padding:8px; border-radius:8px; border:1px solid #334155; background:#0b1220; color:#f8fafc; }
+    button { margin-top:12px; padding:10px 14px; border:0; border-radius:10px; background:#2563eb; color:#fff; cursor:pointer; font-weight:700; }
+    .result { margin-top:16px; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:14px; }
+    .pill { display:inline-block; padding:5px 10px; border-radius:999px; font-size:12px; font-weight:bold; }
+    .green { background:#14532d; color:#bbf7d0; }
+    .yellow { background:#713f12; color:#fef08a; }
+    .red { background:#7f1d1d; color:#fecaca; }
+    .score { font-size:30px; font-weight:700; margin:8px 0; }
+    .warn { margin-top:8px; color:#fbbf24; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🇮🇳 Indian Futures & Options Signal Dashboard</h1>
+    <div class="muted">Confluence model using Greeks + Volatility + Technical + Fundamental + OI data (research use only).</div>
+
+    <div class="grid">
+      <div class="card">
+        <label>Underlying</label>
+        <select id="symbol"><option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option><option>RELIANCE</option></select>
+        <label>Option Type</label>
+        <select id="optionType"><option>CE</option><option>PE</option></select>
+        <label>Strike</label>
+        <input id="strike" type="number" value="24500" />
+        <label>Days to Expiry</label>
+        <input id="dte" type="number" value="7" />
+      </div>
+
+      <div class="card">
+        <label>Delta (-1 to 1)</label>
+        <input id="delta" type="number" step="0.01" value="0.45" />
+        <label>Gamma (0 to 0.20)</label>
+        <input id="gamma" type="number" step="0.001" value="0.05" />
+        <label>Theta (negative/day)</label>
+        <input id="theta" type="number" step="0.1" value="-22" />
+        <label>Vega</label>
+        <input id="vega" type="number" value="85" />
+      </div>
+
+      <div class="card">
+        <label>Current IV (%)</label>
+        <input id="ivCurrent" type="number" value="18" />
+        <label>IV Rank (0-100)</label>
+        <input id="ivRank" type="number" value="40" />
+        <label>RSI (0-100)</label>
+        <input id="rsi" type="number" value="57" />
+        <label>Trend Strength (0-100)</label>
+        <input id="trend" type="number" value="65" />
+      </div>
+
+      <div class="card">
+        <label>Fundamental Score (0-100)</label>
+        <input id="fund" type="number" value="62" />
+        <label>OI Change (%)</label>
+        <input id="oiChange" type="number" value="12" />
+        <label>PCR</label>
+        <input id="pcr" type="number" step="0.01" value="1.05" />
+        <label>Market Breadth (-100 to 100)</label>
+        <input id="breadth" type="number" value="18" />
+        <button onclick="generateSignal()">Generate Best Available Signal</button>
+      </div>
+    </div>
+
+    <div class="result" id="result"></div>
+  </div>
+
+  <script>
+    function clamp(v, lo = 0, hi = 100) { return Math.max(lo, Math.min(hi, v)); }
+    function toNum(id) { return parseFloat(document.getElementById(id).value || 0); }
+
+    function generateSignal() {
+      const payload = {
+        symbol: document.getElementById('symbol').value,
+        optionType: document.getElementById('optionType').value,
+        strike: toNum('strike'),
+        dte: toNum('dte'),
+        delta: toNum('delta'),
+        gamma: toNum('gamma'),
+        theta: toNum('theta'),
+        vega: toNum('vega'),
+        ivCurrent: toNum('ivCurrent'),
+        ivRank: toNum('ivRank'),
+        rsi: toNum('rsi'),
+        trend: toNum('trend'),
+        fund: toNum('fund'),
+        oiChange: toNum('oiChange'),
+        pcr: toNum('pcr'),
+        breadth: toNum('breadth')
+      };
+
+      const deltaQ = 100 - Math.abs(Math.abs(payload.delta) - 0.5) * 180;
+      const gammaQ = payload.gamma * 450;
+      const thetaQ = 100 - Math.abs(payload.theta) * 1.2;
+      const vegaQ = 100 - Math.abs(payload.vega - 80) * 0.8;
+      const greeks = clamp(deltaQ * 0.35 + gammaQ * 0.25 + thetaQ * 0.15 + vegaQ * 0.25);
+
+      let vol = 55;
+      let regime = 'Neutral IV';
+      if (payload.ivRank >= 65) { vol = clamp(70 + (payload.ivRank - 65) * 0.8); regime = 'High IV'; }
+      else if (payload.ivRank <= 30) { vol = clamp(65 + (30 - payload.ivRank) * 0.7); regime = 'Low IV'; }
+      else { vol = clamp(55 - Math.abs(payload.ivRank - 47.5) * 0.6); }
+
+      const technical = clamp((100 - Math.abs(payload.rsi - 55) * 2) * 0.4 + payload.trend * 0.6);
+      const fundamental = clamp(payload.fund);
+      const oiScore = clamp((50 + payload.oiChange * 1.5) * 0.4 + (100 - Math.abs(payload.pcr - 1.0) * 60) * 0.35 + (50 + payload.breadth * 0.4) * 0.25);
+
+      const score = clamp(greeks * 0.30 + vol * 0.20 + technical * 0.25 + fundamental * 0.10 + oiScore * 0.15);
+      const bias = payload.delta >= 0 ? 'Bullish' : 'Bearish';
+
+      let signal = `WEAK ${bias}`;
+      let strategy = 'Defined-risk Vertical Spread';
+      if (score >= 78) {
+        signal = `STRONG ${bias}`;
+        strategy = regime === 'Low IV' ? 'Long Call/Put + Debit Spread' : 'Ratio Backspread / Directional Credit Spread';
+      } else if (score >= 62) {
+        signal = bias;
+        strategy = regime === 'Low IV' ? 'Debit Spread' : 'Credit Spread';
+      } else if (score >= 48) {
+        signal = 'NEUTRAL / RANGE';
+        strategy = regime === 'High IV' ? 'Iron Condor (hedged)' : 'Calendar Spread (ATM)';
+      }
+
+      const badge = score >= 70 ? 'green' : score >= 50 ? 'yellow' : 'red';
+      document.getElementById('result').innerHTML = `
+        <div><span class="pill ${badge}">${signal}</span></div>
+        <div class="score">Confidence: ${Math.round(score)}%</div>
+        <div><b>Recommended Strategy:</b> ${strategy}</div>
+        <div><b>Regime:</b> ${regime}</div>
+        <div style="margin-top:8px"><b>Breakdown:</b> Greeks ${greeks.toFixed(1)} | Volatility ${vol.toFixed(1)} | Technical ${technical.toFixed(1)} | Fundamental ${fundamental.toFixed(1)} | OI ${oiScore.toFixed(1)}</div>
+        <div class="warn">No strategy is universally best. Always paper-trade and use strict risk management.</div>
+      `;
+    }
+
+    generateSignal();
+  </script>
+</body>
+</html>
